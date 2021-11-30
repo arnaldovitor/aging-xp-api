@@ -60,7 +60,7 @@ class Experiments:
         self.__countdown(self.time)
         p.kill()
 
-    def run_model(self, metric_name, train_size, epochs, n_steps, n_features, normalize=True):
+    def run_model(self, metric_name, train_size, epochs, n_steps, n_features, n_seq=None, normalize=True, reshape='linear'):
         sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['log'], 'log.txt')), metric_name)
 
         if normalize:
@@ -76,8 +76,16 @@ class Experiments:
         X_test = X_test.astype(np.float)
         y_test = y_test.astype(np.float)
 
-        X = X.reshape((X.shape[0], X.shape[1], n_features))
-        X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], n_features))
+        if reshape == 'linear':
+            X = X.reshape((X.shape[0], X.shape[1], n_features))
+            X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], n_features))
+        elif reshape == 'cnn':
+            X = X.reshape((X.shape[0], n_seq, n_steps, n_features))
+            X_test = X_test.reshape((X_test.shape[0], n_seq, n_steps, n_features))
+        elif reshape == 'conv':
+            X = X.reshape((X.shape[0], n_seq, 1, n_steps, n_features))
+            X_test = X_test.reshape((X_test.shape[0], n_seq, 1, n_steps, n_features))
+
 
         self.model.fit(X, y, validation_data=(X_test, y_test), epochs=epochs, verbose=1)
 
