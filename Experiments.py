@@ -40,7 +40,7 @@ class Experiments:
 
         print('Countdown finished.')
 
-    def __gen_log(self):
+    def __gen_script(self):
         log = open(os.path.join(self.config['PATHS']['log'], 'script.sh'), 'w')
         log.write('echo {} > {}\n\n'.format(' '.join(self.metrics), os.path.join(self.config['PATHS']['log'], 'log.txt')))
         log.write('while [ TRUE ]\n')
@@ -54,7 +54,7 @@ class Experiments:
         log.close()
 
     def run_exp(self):
-        self.__gen_log()
+        self.__gen_script()
         os.popen('chmod +x -R {}'.format(self.config['PATHS']['log']))
         p = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['log'], 'script.sh')),  stdout=subprocess.PIPE, shell=True)
         self.__countdown(self.time)
