@@ -1,21 +1,23 @@
 import configparser
+import operator
 import os
 import subprocess
 import time
 import random
-
-from models.Vanilla import Vanilla
-
 import matplotlib.pyplot as plt
 import Utils as u
 import numpy as np
+from models.Vanilla import Vanilla
+from models.CNN import CNN
+from models.Conv import Conv
+from models.Stacked import  Stacked
+from models.Bidirectional import  Bidirectional
 
 
 class Experiments:
     def __init__(self, config_file):
         self.config = configparser.ConfigParser()
         self.config.read(config_file)
-
         self.metrics = ['MemUsed', 'MemShared', 'MemBuffCache', 'DiskUsed', 'DiskPerc', '1kBlocks', 'UsrPerc', 'SysPerc', 'IoWaitPerc', 'SoftPerc', 'IdlePerc']
         self.time = None
         self.sleep = None
@@ -60,7 +62,7 @@ class Experiments:
         self.__countdown(self.time)
         p.kill()
 
-    def run_model(self, metric_name, train_size, epochs, n_steps, n_features, n_seq=None, normalize=True, reshape='linear'):
+    def run_model(self, metric_name, train_size, epochs, n_steps, n_features, reshape, n_seq=None, normalize=True):
         sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['log'], 'log.txt')), metric_name)
 
         if normalize:
@@ -80,14 +82,16 @@ class Experiments:
             X = X.reshape((X.shape[0], X.shape[1], n_features))
             X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], n_features))
         elif reshape == 'cnn':
+            n_steps = int(n_steps / n_seq)
             X = X.reshape((X.shape[0], n_seq, n_steps, n_features))
             X_test = X_test.reshape((X_test.shape[0], n_seq, n_steps, n_features))
         elif reshape == 'conv':
+            n_steps = int(n_steps / n_seq)
             X = X.reshape((X.shape[0], n_seq, 1, n_steps, n_features))
             X_test = X_test.reshape((X_test.shape[0], n_seq, 1, n_steps, n_features))
 
 
-        self.model.fit(X, y, validation_data=(X_test, y_test), epochs=epochs, verbose=1)
+        history = self.model.fit(X, y, validation_data=(X_test, y_test), epochs=epochs, verbose=1)
 
         pred_x = self.model.predict(X)
         pred_x_test = self.model.predict(X_test)
@@ -110,15 +114,36 @@ class Experiments:
 
         plt.show()
 
-if __name__ == '__main__':
-    config_file = 'config.ini'
-    n_steps = 4
-    n_features = 1
+        return history
 
-    exp = Experiments(config_file=config_file)
-    model = Vanilla(n_steps=n_steps, n_features=n_features, learning_rate=1e-3, loss='mse', metrics=['mape', 'mse', 'mae'])
-    exp.set_model(model)
-    exp.set_time(50)
-    exp.set_sleep(1)
-    exp.run_exp()
-    exp.run_model(metric_name='MemUsed', train_size=0.8, epochs=2, n_steps=n_steps, n_features=n_features)
+    def eval_best_model(self, metric_name, model_metrics, eval_metric, learning_rate, loss, train_size, epochs, n_steps, n_features, n_seq):
+        eval = {'Vanilla': 0, 'Bidirectional': 0, 'Stacked': 0, 'CNN': 0, 'Conv': 0}
+
+        model = Vanilla(n_steps=n_steps, n_features=n_features, learning_rate=learning_rate, loss=loss, metrics=model_metrics)
+        self.set_model(model)
+        history = self.run_model(metric_name=metric_name, train_size=train_size, epochs=epochs, n_steps=n_steps, n_features=n_features, reshape='linear')
+        eval['Vanilla'] = history.history[eval_metric][0]
+
+        model = Bidirectional(n_steps=n_steps, n_features=n_features, learning_rate=learning_rate, loss=loss, metrics=model_metrics)
+        self.set_model(model)
+        history = self.run_model(metric_name=metric_name, train_size=train_size, epochs=epochs, n_steps=n_steps, n_features=n_features, reshape='linear')
+        eval['Bidirectional'] = history.history[eval_metric][0]
+
+        model = Stacked(n_steps=n_steps, n_features=n_features, learning_rate=learning_rate, loss=loss, metrics=model_metrics)
+        self.set_model(model)
+        history = self.run_model(metric_name=metric_name, train_size=train_size, epochs=epochs, n_steps=n_steps, n_features=n_features, reshape='linear')
+        eval['Stacked'] = history.history[eval_metric][0]
+
+        model = CNN(n_steps=int(n_steps / n_seq), n_features=n_features, learning_rate=learning_rate, loss=loss, metrics=model_metrics)
+        self.set_model(model)
+        history = self.run_model(metric_name=metric_name, train_size=train_size, epochs=epochs, n_steps=n_steps, n_features=n_features, reshape='cnn', n_seq=n_seq)
+        eval['CNN'] = history.history[eval_metric][0]
+
+        model = Conv(n_steps=int(n_steps / n_seq), n_features=n_features, learning_rate=learning_rate, loss=loss, metrics=model_metrics, n_seq=n_seq)
+        self.set_model(model)
+        history = self.run_model(metric_name=metric_name, train_size=train_size, epochs=epochs, n_steps=n_steps, n_features=n_features, reshape='conv', n_seq=n_seq)
+        eval['Conv'] = history.history[eval_metric][0]
+
+        eval_ord = sorted(eval.items(), key=lambda item: item[1])
+        print('Models in ascending order using the {} metric'.format(eval_metric))
+        print(eval_ord)
