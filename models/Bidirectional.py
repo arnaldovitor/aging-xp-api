@@ -2,7 +2,6 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dense
-import tensorflow as tf
 
 
 def Bidirectional(n_steps, n_features, learning_rate, loss, metrics):

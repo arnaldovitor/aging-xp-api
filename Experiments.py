@@ -19,15 +19,23 @@ class Experiments:
         self.config = configparser.ConfigParser()
         self.config.read(config_file)
         self.metrics = ['MemUsed', 'MemShared', 'MemBuffCache', 'DiskUsed', 'DiskPerc', '1kBlocks', 'UsrPerc', 'SysPerc', 'IoWaitPerc', 'SoftPerc', 'IdlePerc']
-        self.time = None
-        self.sleep = None
+        self.monitoring_time = None
+        self.monitoring_sleep = None
+        self.forecast_time = None
+        self.forecast_sleep = None
         self.model = None
 
-    def set_time(self, time):
-        self.time = time
+    def set_monitoring_time(self, monitoring_time):
+        self.monitoring_time = monitoring_time
 
-    def set_sleep(self, sleep):
-        self.sleep = sleep
+    def set_monitoring_sleep(self, monitoring_sleep):
+        self.monitoring_sleep = monitoring_sleep
+
+    def set_forecast_time(self, forecast_time):
+        self.forecast_time = forecast_time
+
+    def set_forecast_sleep(self, forecast_sleep):
+        self.forecast_sleep = forecast_sleep
 
     def set_model(self, model):
         self.model = model
@@ -42,36 +50,78 @@ class Experiments:
 
         print('Countdown finished.')
 
-    def __gen_script(self):
-        log = open(os.path.join(self.config['PATHS']['log'], 'script.sh'), 'w')
-        log.write('echo {} > {}\n\n'.format(' '.join(self.metrics), os.path.join(self.config['PATHS']['log'], 'log.txt')))
+    def __gen_monitoring_script(self):
+        log = open(os.path.join(self.config['PATHS']['scripts'], 'monitoring_script.sh'), 'w')
+        log.write('echo {} > {}\n\n'.format(' '.join(self.metrics), os.path.join(self.config['PATHS']['logs'], 'monitoring_log.txt')))
         log.write('while [ TRUE ]\n')
         log.write('do\n\n')
         log.write("mem=`free | grep Mem | awk '{print $3, $5, $6}'`\n")
         log.write("disco=`df | grep sda2 | awk '{print $3, $5, $2}'`\n")
         log.write("cpu=`mpstat | grep all | awk '{print $3, $4, $5, $7, $11}'`\n\n")
-        log.write('echo $mem $disco $cpu >> {}\n\n'.format(os.path.join(self.config['PATHS']['log'], 'log.txt')))
-        log.write('sleep {}\n\n'.format(self.sleep))
+        log.write('echo $mem $disco $cpu >> {}\n\n'.format(os.path.join(self.config['PATHS']['logs'], 'monitoring_log.txt')))
+        log.write('sleep {}\n\n'.format(self.monitoring_sleep))
         log.write('done')
         log.close()
 
-    def run_exp(self):
-        self.__gen_script()
-        os.popen('chmod +x -R {}'.format(self.config['PATHS']['log']))
-        p = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['log'], 'script.sh')),  stdout=subprocess.PIPE, shell=True)
-        self.__countdown(self.time)
+    def __gen_forecast_script(self):
+        log = open(os.path.join(self.config['PATHS']['scripts'], 'forecast_script.sh'), 'w')
+        log.write('echo {} > {}\n\n'.format(' '.join(self.metrics), os.path.join(self.config['PATHS']['log'], 'forecast_log.txt')))
+        log.write('while [ TRUE ]\n')
+        log.write('do\n\n')
+        log.write("mem=`free | grep Mem | awk '{print $3, $5, $6}'`\n")
+        log.write("disco=`df | grep sda2 | awk '{print $3, $5, $2}'`\n")
+        log.write("cpu=`mpstat | grep all | awk '{print $3, $4, $5, $7, $11}'`\n\n")
+        log.write('echo $mem $disco $cpu >> {}\n\n'.format(os.path.join(self.config['PATHS']['log'], 'forecast_log.txt')))
+        log.write('done')
+        log.close()
+
+    def run_monitoring(self, monitoring_script='monitoring_script.sh'):
+        if monitoring_script == 'monitoring_script.sh':
+            self.__gen_monitoring_script()
+        os.popen('chmod +x -R {}'.format(self.config['PATHS']['scripts']))
+        p = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], monitoring_script)), stdout=subprocess.PIPE, shell=True)
+        self.__countdown(self.monitoring_time)
         p.kill()
 
-    def run_model(self, metric_name, train_size, epochs, n_steps, n_features, reshape, n_seq=None, normalize=True):
-        sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['log'], 'log.txt')), metric_name)
+    def run_forecast(self, model_list, target_list, metrics_list, rejuvenation_script, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
+        if forecast_script == 'forecast_script.sh':
+            self.__gen_forecast_script()
+        os.popen('chmod +x -R {}'.format(self.config['PATHS']['scripts']))
+
+        forecast_start = time.time()
+        while time.time() < forecast_start + self.forecast_time:
+            for i, model in enumerate(model_list):
+                flag_list = []
+                p1 = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], forecast_script)), stdout=subprocess.PIPE, shell=True)
+                self.__countdown(self.forecast_sleep)
+                p1.kill()
+                sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['logs'], forecast_log)), metrics_list[i])
+                y = model.predict(sequence[:-1])
+                pred = model.predict(y)
+                if pred == target_list[i]:
+                    flag_list.append(1)
+                else:
+                    flag_list.append(0)
+
+            if flag_list.count(1) >= flag_list.count(0):
+                p2 = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], rejuvenation_script)), stdout=subprocess.PIPE, shell=True)
+                p2.kill()
+
+
+    def __save_model(self):
+        hash = str(random.getrandbits(128))
+        self.model.save(os.path.join(self.config['PATHS']['models'], '{}_{}'.format(self.model.name, hash)))
+
+    def run_model(self, metric_name, train_size, epochs, n_steps, n_features, y_step, reshape, log='monitoring_log.txt', n_seq=None, normalize=True):
+        sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['logs'], log)), metric_name)
 
         if normalize:
             sequence, s_min, s_max = u.normalize(sequence)
 
         train, test = u.split_sets(sequence, train_size)
 
-        X, y = u.split_sequence(train.tolist(), n_steps)
-        X_test, y_test = u.split_sequence(test.tolist(), n_steps)
+        X, y = u.split_sequence(train.tolist(), n_steps, y_step)
+        X_test, y_test = u.split_sequence(test.tolist(), n_steps, y_step)
 
         X = X.astype(np.float)
         y = y.astype(np.float)
@@ -113,6 +163,8 @@ class Experiments:
         plt.savefig(os.path.join(self.config['PATHS']['plots'], "{}.png".format(hash)), dpi=800)
 
         plt.show()
+
+        self.__save_model()
 
         return history
 

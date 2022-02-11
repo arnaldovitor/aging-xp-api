@@ -2,13 +2,14 @@ import pandas as pd
 from numpy import array
 
 
-def split_sequence(sequence, n_steps):
+def split_sequence(sequence, n_steps, y_step):
     X, y = [], []
     for i in range(len(sequence)):
         end_ix = i + n_steps
-        if end_ix > len(sequence) - 1:
+        y_step += end_ix
+        if y_step > len(sequence) - 1:
             break
-        seq_x, seq_y = sequence[i:end_ix], sequence[end_ix]
+        seq_x, seq_y = sequence[i:end_ix], sequence[y_step]
         X.append(seq_x)
         y.append(seq_y)
     return array(X), array(y)

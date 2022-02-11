@@ -5,7 +5,7 @@ from tensorflow.keras.layers import Dense
 
 
 def Stacked(n_steps, n_features, learning_rate, loss, metrics):
-    model = Sequential()
+    model = Sequential(name='stacked')
     model.add(LSTM(50, activation='relu', return_sequences=True, input_shape=(n_steps, n_features)))
     model.add(LSTM(50, activation='relu'))
     model.add(Dense(1))

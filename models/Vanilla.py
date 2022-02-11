@@ -5,7 +5,7 @@ from tensorflow.keras.layers import Dense
 
 
 def Vanilla(n_steps, n_features, learning_rate, loss, metrics):
-    model = Sequential()
+    model = Sequential(name='vanilla')
     model.add(LSTM(50, activation='relu', input_shape=(n_steps, n_features)))
     model.add(Dense(1))
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate), loss=loss, metrics=metrics)
