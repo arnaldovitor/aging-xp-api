@@ -1,17 +1,18 @@
 import configparser
-import operator
 import os
+import random
 import subprocess
 import time
-import random
-import matplotlib.pyplot as plt
-import Utils as u
+from matplotlib import pyplot as plt
+
 import numpy as np
-from models.Vanilla import Vanilla
+
+import Utils as u
+from models.Bidirectional import Bidirectional
 from models.CNN import CNN
 from models.Conv import Conv
-from models.Stacked import  Stacked
-from models.Bidirectional import  Bidirectional
+from models.Stacked import Stacked
+from models.Vanilla import Vanilla
 
 
 class Experiments:
@@ -83,7 +84,7 @@ class Experiments:
         self.__countdown(self.monitoring_time)
         p.kill()
 
-    def run_forecast(self, model_list, target_list, metrics_list, rejuvenation_script, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
+    def run_forecast(self, model_list, threshold_list, metrics_list, rejuvenation_script, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
         if forecast_script == 'forecast_script.sh':
             self.__gen_forecast_script()
         os.popen('chmod +x -R {}'.format(self.config['PATHS']['scripts']))
@@ -98,7 +99,7 @@ class Experiments:
                 sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['logs'], forecast_log)), metrics_list[i])
                 y = model.predict(sequence[:-1])
                 pred = model.predict(y)
-                if pred == target_list[i]:
+                if pred > threshold_list[i]:
                     flag_list.append(1)
                 else:
                     flag_list.append(0)
@@ -106,6 +107,8 @@ class Experiments:
             if flag_list.count(1) >= flag_list.count(0):
                 p2 = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], rejuvenation_script)), stdout=subprocess.PIPE, shell=True)
                 p2.kill()
+
+        return flag_list
 
 
     def __save_model(self):
