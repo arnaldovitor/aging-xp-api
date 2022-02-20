@@ -3,6 +3,7 @@ import os
 import random
 import subprocess
 import time
+import sys
 from matplotlib import pyplot as plt
 
 import numpy as np
@@ -41,15 +42,18 @@ class Experiments:
     def set_model(self, model):
         self.model = model
 
-    def __countdown(self, t):
-        while t:
-            m, s = divmod(t, 60)
-            min_sec_format = '{:02d}:{:02d}'.format(m, s)
-            print(min_sec_format, end='\n')
-            time.sleep(1)
-            t -= 1
+    def __print_progbar(self, i, max, text):
+        n_bar = 40
+        j = i / max
+        sys.stdout.write('\r')
+        sys.stdout.write(f"[{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%  {text}")
+        sys.stdout.flush()
 
-        print('Countdown finished.')
+    def __countdown(self, t, progbar=False):
+        for i in range(t):
+            if progbar == True:
+                self.__print_progbar(i, t, 'Progress')
+            time.sleep(1)
 
     def __gen_monitoring_script(self):
         log = open(os.path.join(self.config['PATHS']['scripts'], 'monitoring_script.sh'), 'w')
@@ -81,7 +85,8 @@ class Experiments:
             self.__gen_monitoring_script()
         os.popen('chmod +x -R {}'.format(self.config['PATHS']['scripts']))
         p = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], monitoring_script)), stdout=subprocess.PIPE, shell=True)
-        self.__countdown(self.monitoring_time)
+        print('# MONITORING')
+        self.__countdown(self.monitoring_time, True)
         p.kill()
 
     def run_forecast(self, model_list, threshold_list, metrics_list, rejuvenation_script, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
@@ -90,6 +95,9 @@ class Experiments:
         os.popen('chmod +x -R {}'.format(self.config['PATHS']['scripts']))
 
         forecast_start = time.time()
+        t = 0
+
+        print('# FORECAST')
         while time.time() < forecast_start + self.forecast_time:
             for i, model in enumerate(model_list):
                 flag_list = []
@@ -107,6 +115,9 @@ class Experiments:
             if flag_list.count(1) >= flag_list.count(0):
                 p2 = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], rejuvenation_script)), stdout=subprocess.PIPE, shell=True)
                 p2.kill()
+
+            t = time.time() - forecast_start
+            self.__print_progbar(t, self.forecast_time, 'Progress')
 
         return flag_list
 
