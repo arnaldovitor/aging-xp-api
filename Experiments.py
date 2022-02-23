@@ -4,11 +4,13 @@ import random
 import subprocess
 import time
 import sys
+
 from matplotlib import pyplot as plt
 
 import numpy as np
-
+import tensorflow as tf
 import Utils as u
+
 from models.Bidirectional import Bidirectional
 from models.CNN import CNN
 from models.Conv import Conv
@@ -25,7 +27,10 @@ class Experiments:
         self.monitoring_sleep = None
         self.forecast_time = None
         self.forecast_sleep = None
-        self.model = None
+        self.model_list = []
+        self.threshold_list = []
+        self.metrics_list = []
+        self.reshape_list = []
 
     def set_monitoring_time(self, monitoring_time):
         self.monitoring_time = monitoring_time
@@ -38,9 +43,6 @@ class Experiments:
 
     def set_forecast_sleep(self, forecast_sleep):
         self.forecast_sleep = forecast_sleep
-
-    def set_model(self, model):
-        self.model = model
 
     def __print_progbar(self, i, max, text):
         n_bar = 40
@@ -70,15 +72,18 @@ class Experiments:
 
     def __gen_forecast_script(self):
         log = open(os.path.join(self.config['PATHS']['scripts'], 'forecast_script.sh'), 'w')
-        log.write('echo {} > {}\n\n'.format(' '.join(self.metrics), os.path.join(self.config['PATHS']['log'], 'forecast_log.txt')))
+        log.write('echo {} > {}\n\n'.format(' '.join(self.metrics), os.path.join(self.config['PATHS']['logs'], 'forecast_log.txt')))
         log.write('while [ TRUE ]\n')
         log.write('do\n\n')
         log.write("mem=`free | grep Mem | awk '{print $3, $5, $6}'`\n")
         log.write("disco=`df | grep sda2 | awk '{print $3, $5, $2}'`\n")
         log.write("cpu=`mpstat | grep all | awk '{print $3, $4, $5, $7, $11}'`\n\n")
-        log.write('echo $mem $disco $cpu >> {}\n\n'.format(os.path.join(self.config['PATHS']['log'], 'forecast_log.txt')))
+        log.write('echo $mem $disco $cpu >> {}\n\n'.format(os.path.join(self.config['PATHS']['logs'], 'forecast_log.txt')))
         log.write('done')
         log.close()
+
+    def __save_model(self, model, hash):
+        model.save(os.path.join(self.config['PATHS']['models'], '{}'.format(hash)))
 
     def run_monitoring(self, monitoring_script='monitoring_script.sh'):
         if monitoring_script == 'monitoring_script.sh':
@@ -89,7 +94,7 @@ class Experiments:
         self.__countdown(self.monitoring_time, True)
         p.kill()
 
-    def run_forecast(self, model_list, threshold_list, metrics_list, rejuvenation_script, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
+    def run_forecast(self, rejuvenation_script,n_steps, n_features, y_step, n_seq = None, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
         if forecast_script == 'forecast_script.sh':
             self.__gen_forecast_script()
         os.popen('chmod +x -R {}'.format(self.config['PATHS']['scripts']))
@@ -99,15 +104,28 @@ class Experiments:
 
         print('# FORECAST')
         while time.time() < forecast_start + self.forecast_time:
-            for i, model in enumerate(model_list):
+            for i, model in enumerate(self.model_list):
                 flag_list = []
                 p1 = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], forecast_script)), stdout=subprocess.PIPE, shell=True)
                 self.__countdown(self.forecast_sleep)
                 p1.kill()
-                sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['logs'], forecast_log)), metrics_list[i])
-                y = model.predict(sequence[:-1])
-                pred = model.predict(y)
-                if pred > threshold_list[i]:
+
+                sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['logs'], forecast_log)), self.metrics_list[i])
+                sequence, _ = u.split_sequence(sequence.tolist(), n_steps, y_step)
+                sequence.astype(np.float)
+
+                if self.reshape_list[i] == 'linear':
+                    sequence = sequence.reshape((sequence.shape[0], sequence.shape[1], n_features))
+                elif self.reshape_list[i] == 'cnn':
+                    n_steps = int(n_steps / n_seq)
+                    sequence = sequence.reshape((sequence.shape[0], n_seq, n_steps, n_features))
+                elif self.reshape_list[i] == 'conv':
+                    n_steps = int(n_steps / n_seq)
+                    sequence = sequence.reshape((sequence.shape[0], n_seq, 1, n_steps, n_features))
+
+                pred = model.predict(sequence)
+
+                if float(pred[0]) > self.threshold_list[i]:
                     flag_list.append(1)
                 else:
                     flag_list.append(0)
@@ -115,18 +133,14 @@ class Experiments:
             if flag_list.count(1) >= flag_list.count(0):
                 p2 = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], rejuvenation_script)), stdout=subprocess.PIPE, shell=True)
                 p2.kill()
+                print('\n# ACTIVATED REJUVENATION')
+                print('Flag list:', flag_list)
 
             t = time.time() - forecast_start
             self.__print_progbar(t, self.forecast_time, 'Progress')
 
-        return flag_list
 
-
-    def __save_model(self):
-        hash = str(random.getrandbits(128))
-        self.model.save(os.path.join(self.config['PATHS']['models'], '{}_{}'.format(self.model.name, hash)))
-
-    def run_model(self, metric_name, train_size, epochs, n_steps, n_features, y_step, reshape, log='monitoring_log.txt', n_seq=None, normalize=True):
+    def run_model(self, model, metric_name, train_size, epochs, n_steps, n_features, y_step, reshape, log='monitoring_log.txt', n_seq=None, normalize=True):
         sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['logs'], log)), metric_name)
 
         if normalize:
@@ -155,10 +169,10 @@ class Experiments:
             X_test = X_test.reshape((X_test.shape[0], n_seq, 1, n_steps, n_features))
 
 
-        history = self.model.fit(X, y, validation_data=(X_test, y_test), epochs=epochs, verbose=1)
+        history = model.fit(X, y, validation_data=(X_test, y_test), epochs=epochs, verbose=1)
 
-        pred_x = self.model.predict(X)
-        pred_x_test = self.model.predict(X_test)
+        pred_x = model.predict(X)
+        pred_x_test = model.predict(X_test)
 
         dif = (len(np.concatenate((y, y_test), axis=0)) - len(pred_x_test))
 
@@ -178,9 +192,16 @@ class Experiments:
 
         plt.show()
 
-        self.__save_model()
+        self.__save_model(model, hash)
 
         return history
+
+    def add_model(self, hash, threshold, metric, reshape):
+        model = tf.keras.models.load_model(os.path.join(self.config['PATHS']['models'], hash))
+        self.model_list.append(model)
+        self.threshold_list.append(threshold)
+        self.metrics_list.append(metric)
+        self.reshape_list.append(reshape)
 
     def eval_best_model(self, metric_name, model_metrics, eval_metric, learning_rate, loss, train_size, epochs, n_steps, n_features, n_seq):
         eval = {'Vanilla': 0, 'Bidirectional': 0, 'Stacked': 0, 'CNN': 0, 'Conv': 0}
