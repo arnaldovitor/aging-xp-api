@@ -16,7 +16,7 @@ exp.set_monitoring_time(60*60)
 exp.set_monitoring_sleep(1)
 exp.run_monitoring()
 
-history, min1, max1 = exp.run_model(model=model,
+hash1, min1, max1 = exp.run_model(model=model,
                                   metric_name='MemUsed',
                                   train_size=0.8,
                                   epochs=100,
@@ -25,7 +25,7 @@ history, min1, max1 = exp.run_model(model=model,
                                   y_step=y_step,
                                   reshape='linear')
 
-exp.add_model(hash='232482638227750945466975799252371398177',
+exp.add_model(hash=hash1,
               threshold=300,
               metric='MemUsed',
               reshape='linear',
