@@ -97,7 +97,7 @@ class Experiments:
         self.__countdown(self.monitoring_time, True)
         p.kill()
 
-    def run_forecast(self, rejuvenation_script,n_steps, n_features, y_step, s_min, s_max, n_seq=None, normalize=True, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
+    def run_forecast(self, rejuvenation_script,n_steps, n_features, y_step, n_seq=None, normalize=True, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
         if forecast_script == 'forecast_script.sh':
             self.__gen_forecast_script()
         os.popen('chmod +x -R {}'.format(self.config['PATHS']['scripts']))
@@ -200,7 +200,10 @@ class Experiments:
 
         self.__save_model(model, hash)
 
-        return history, s_min, s_max
+        if normalize:
+            return history, s_min, s_max
+        else:
+            return history
 
     def add_model(self, hash, threshold, metric, reshape, s_min, s_max):
         model = tf.keras.models.load_model(os.path.join(self.config['PATHS']['models'], hash))
