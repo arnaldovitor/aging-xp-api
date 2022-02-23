@@ -201,9 +201,9 @@ class Experiments:
         self.__save_model(model, hash)
 
         if normalize:
-            return history, s_min, s_max
+            return hash, s_min, s_max
         else:
-            return history
+            return hash
 
     def add_model(self, hash, threshold, metric, reshape, s_min, s_max):
         model = tf.keras.models.load_model(os.path.join(self.config['PATHS']['models'], hash))
