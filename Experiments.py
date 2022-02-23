@@ -28,9 +28,12 @@ class Experiments:
         self.forecast_time = None
         self.forecast_sleep = None
         self.model_list = []
+        self.hash_list = []
         self.threshold_list = []
         self.metrics_list = []
         self.reshape_list = []
+        self.min_list = []
+        self.max_list = []
 
     def set_monitoring_time(self, monitoring_time):
         self.monitoring_time = monitoring_time
@@ -94,7 +97,7 @@ class Experiments:
         self.__countdown(self.monitoring_time, True)
         p.kill()
 
-    def run_forecast(self, rejuvenation_script,n_steps, n_features, y_step, n_seq = None, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
+    def run_forecast(self, rejuvenation_script,n_steps, n_features, y_step, s_min, s_max, n_seq=None, normalize=True, forecast_log='forecast_log.txt', forecast_script='forecast_script.sh'):
         if forecast_script == 'forecast_script.sh':
             self.__gen_forecast_script()
         os.popen('chmod +x -R {}'.format(self.config['PATHS']['scripts']))
@@ -109,6 +112,9 @@ class Experiments:
                 p1 = subprocess.Popen('exec {}'.format(os.path.join(self.config['PATHS']['scripts'], forecast_script)), stdout=subprocess.PIPE, shell=True)
                 self.__countdown(self.forecast_sleep)
                 p1.kill()
+
+                if normalize:
+                    sequence, _, _ = u.normalize(sequence, self.min_list[i], self.max_list[i])
 
                 sequence = u.separe_column(r"{}".format(os.path.join(self.config['PATHS']['logs'], forecast_log)), self.metrics_list[i])
                 sequence, _ = u.split_sequence(sequence.tolist(), n_steps, y_step)
@@ -194,14 +200,18 @@ class Experiments:
 
         self.__save_model(model, hash)
 
-        return history
+        return history, s_min, s_max
 
-    def add_model(self, hash, threshold, metric, reshape):
+    def add_model(self, hash, threshold, metric, reshape, s_min, s_max):
         model = tf.keras.models.load_model(os.path.join(self.config['PATHS']['models'], hash))
         self.model_list.append(model)
+        self.hash_list.append(hash)
         self.threshold_list.append(threshold)
         self.metrics_list.append(metric)
         self.reshape_list.append(reshape)
+        self.min_list.append(s_min)
+        self.max_list.append(s_max)
+
 
     def eval_best_model(self, metric_name, model_metrics, eval_metric, learning_rate, loss, train_size, epochs, n_steps, n_features, n_seq):
         eval = {'Vanilla': 0, 'Bidirectional': 0, 'Stacked': 0, 'CNN': 0, 'Conv': 0}

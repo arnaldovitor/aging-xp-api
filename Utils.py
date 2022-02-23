@@ -34,9 +34,11 @@ def split_sets(sequence, train_perc):
     return train, test
 
 
-def normalize(sequence):
-    s_min = sequence.min()
-    s_max = sequence.max()
+def normalize(sequence, s_min=None, s_max=None):
+    if s_min is not None and s_max is not None:
+        s_min = sequence.min()
+        s_max = sequence.max()
+
     sequence = (sequence - sequence.min()) / (sequence.max() - sequence.min())
     return sequence, s_min, s_max
 
